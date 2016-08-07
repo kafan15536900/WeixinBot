@@ -12,9 +12,10 @@ import re
 import sys
 import os
 import random
-import multiprocessing
+import threading
 import platform
 import logging
+import pprint
 from collections import defaultdict
 from urlparse import urlparse
 from lxml import html
@@ -79,7 +80,7 @@ class WebWeixin(object):
         return description
 
     def __init__(self):
-        self.DEBUG = False
+        self.DEBUG = True
         self.uuid = ''
         self.base_uri = ''
         self.redirect_uri = ''
@@ -613,6 +614,9 @@ class WebWeixin(object):
         return name
 
     def getUSerID(self, name):
+        pprint.pprint(name)
+        name = name.encode('utf8'); #从服务器上获取的用户名目前为此编码
+        pprint.pprint(name)
         for member in self.MemberList:
             if name == member['RemarkName'] or name == member['NickName']:
                 return member['UserName']
@@ -706,7 +710,7 @@ class WebWeixin(object):
                 raw_msg = {'raw_msg': msg}
                 self._showMsg(raw_msg)
                 if self.autoReplyMode:
-                    ans = self._xiaodoubi(content) + '\n[微信机器人自动回复]'
+                    ans = self._xiaodoubi(content) + '\n[调试中的AI]'
                     if self.webwxsendmsg(ans, msg['FromUserName']):
                         print '自动回复: ' + ans
                         logging.info('自动回复: ' + ans)
@@ -908,7 +912,7 @@ class WebWeixin(object):
             print self
         logging.debug(self)
 
-        if self.interactive and raw_input('[*] 是否开启自动回复模式(y/n): ') == 'y':
+        if raw_input('[*] 是否开启自动回复模式(y/n): ') == 'y':
             self.autoReplyMode = True
             print '[*] 自动回复模式 ... 开启'
             logging.debug('[*] 自动回复模式 ... 开启')
@@ -916,38 +920,48 @@ class WebWeixin(object):
             print '[*] 自动回复模式 ... 关闭'
             logging.debug('[*] 自动回复模式 ... 关闭')
 
-        listenProcess = multiprocessing.Process(target=self.listenMsgMode)
+        listenProcess = threading.Thread(target=self.listenMsgMode)
+        listenProcess.setDaemon(True) 
         listenProcess.start()
 
         while True:
             text = raw_input('')
+            if sys.platform.startswith('win'):  #win平台下需要进行转换
+                text = self._gbk2unicode(text)
             if text == 'quit':
-                listenProcess.terminate()
+                #listenProcess.terminate()
                 print('[*] 退出微信')
                 logging.debug('[*] 退出微信')
                 exit()
-            elif text[:2] == '->':
-                [name, word] = text[2:].split(':')
-                if name == 'all':
-                    self.sendMsgToAll(word)
-                else:
-                    self.sendMsg(name, word)
-            elif text[:3] == 'm->':
-                [name, file] = text[3:].split(':')
-                self.sendMsg(name, file, True)
-            elif text[:3] == 'f->':
-                print '发送文件'
-                logging.debug('发送文件')
-            elif text[:3] == 'i->':
-                print '发送图片'
-                [name, file_name] = text[3:].split(':')
-                self.sendImg(name, file_name)
-                logging.debug('发送图片')
-            elif text[:3] == 'e->':
-                print '发送表情'
-                [name, file_name] = text[3:].split(':')
-                self.sendEmotion(name, file_name)
-                logging.debug('发送表情')
+            elif text[:5] == 'debug':
+                pprint.pprint(self.MemberList)
+            elif text[:5] == 'chmod':
+                self.autoReplyMode = ~self.autoReplyMode
+                logging.debug('[*] 自动回复模式 ... 更改')
+                pprint.pprint(self.autoReplyMode)
+            elif text.find(':') != -1:   #如果不包含指定字符,这里的整体结构不太好先这么将就下
+                if text[:2] == '->':
+                    [name, word] = text[2:].split(':')
+                    if name == 'all':
+                        self.sendMsgToAll(word)
+                    else:
+                        self.sendMsg(name, word)
+                elif text[:3] == 'm->':
+                    [name, file] = text[3:].split(':')
+                    self.sendMsg(name, file, True)
+                elif text[:3] == 'f->':
+                    print '发送文件'
+                    logging.debug('发送文件')
+                elif text[:3] == 'i->':
+                    print '发送图片'
+                    [name, file_name] = text[3:].split(':')
+                    self.sendImg(name, file_name)
+                    logging.debug('发送图片')
+                elif text[:3] == 'e->':
+                    print '发送表情'
+                    [name, file_name] = text[3:].split(':')
+                    self.sendEmotion(name, file_name)
+                    logging.debug('发送表情')
 
     def _safe_open(self, path):
         if self.autoOpen:
@@ -955,6 +969,16 @@ class WebWeixin(object):
                 os.system("xdg-open %s &" % path)
             else:
                 os.system('open %s &' % path)
+
+    def _saveStr(self, str):
+        fn = 'str' + str(int(random.random() * 1000)) + '.json'
+        with open(fn, 'w') as f:
+            f.write(json.dumps(msg))
+        print '[*] 该消息已储存到文件: ' + fn
+        logging.debug('[*] 该消息已储存到文件: %s' % (fn))
+
+    def _gbk2unicode(self,str):    #windows下控制台的输入为gbk
+        return(str.decode('gbk'))
 
     def _run(self, str, func, *args):
         self._echo(str)
@@ -991,7 +1015,9 @@ class WebWeixin(object):
         if type(data) == unicode:
             result = data
         elif type(data) == str:
+            pprint.pprint(data)
             result = data.decode('utf-8')
+            pprint.pprint(data)
         return result
 
     def _get(self, url, api=None):
@@ -1077,8 +1103,6 @@ if sys.stdout.encoding == 'cp936':
 if __name__ == '__main__':
 
     logger = logging.getLogger(__name__)
-    import coloredlogs
-    coloredlogs.install(level='DEBUG')
 
     webwx = WebWeixin()
     webwx.start()
