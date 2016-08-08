@@ -620,6 +620,9 @@ class WebWeixin(object):
         for member in self.MemberList:
             if name == member['RemarkName'] or name == member['NickName']:
                 return member['UserName']
+        for member in self.GroupList:
+            if name == member['RemarkName'] or name == member['NickName']:
+                return member['UserName']
         return None
 
     def _showMsg(self, message):
@@ -934,7 +937,7 @@ class WebWeixin(object):
                 logging.debug('[*] 退出微信')
                 exit()
             elif text[:5] == 'debug':
-                pprint.pprint(self.MemberList)
+                pprint.pprint(self.GroupList)
             elif text[:5] == 'chmod':
                 self.autoReplyMode = ~self.autoReplyMode
                 logging.debug('[*] 自动回复模式 ... 更改')
